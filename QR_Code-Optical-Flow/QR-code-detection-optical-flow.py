@@ -1,4 +1,4 @@
-#Dhruv Singh Jadon
+# Dhruv Singh Jadon
 # import the necessary packages
 import cv2 as cv
 import numpy as np
@@ -8,7 +8,21 @@ import time
 import AiPhile
 import matplotlib.pyplot as plt
 
+# Physical size of the QR code in centimeters
+qr_code_length_cm = 17.5
+
+# Lists to store velocity data for plotting
+timestamps = []
+velocities_x = []
+velocities_y = []
+
+
+# Initialize variables for velocity calculation
+prev_time = time.time()
+prev_coordinates_pyzbar = None
+prev_coordinates_optical_flow = None
 # QR code detector function
+
 def detectQRcode(image):
     # convert the color image to gray scale image
     Gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
@@ -35,6 +49,7 @@ cap = cv.VideoCapture(0)
 _, frame = cap.read()
 old_gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
 
+# Optical flow intialization
 lk_params = dict(winSize=(20, 20),
                  maxLevel=4,
                  criteria=(cv.TERM_CRITERIA_EPS | cv.TERM_CRITERIA_COUNT, 10, 0.01))
@@ -46,45 +61,27 @@ old_points = np.array([[]])
 qr_detected= False
 # stop_code=False
 
-# Create a figure for plotting
-plt.ion()  # Enable interactive mode
-fig, ax = plt.subplots()
-line_pyzbar, = ax.plot([], [], label='Pyzbar Velocity')
-line_optical_flow, = ax.plot([], [], label='Optical Flow Velocity')
-ax.set_xlabel('Frame Number')
-ax.set_ylabel('Velocity')
-ax.legend()
 
-# Initialize variables for velocity calculation for Optical Flow
-previous_position = None
-previous_time = None
-velocity = None
 
-# Initialize variables for velocity calculation for Pyzbar
-previous_pyzbar_points = None
-previous_pyzbar_time = None
-pyzbar_velocity = None
-
-# Create lists to store velocities
-pyzbar_velocities = []
-optical_flow_velocities = []
-
+# Frame counter and time initialization
 frame_counter =0
 starting_time =time.time()
+
 # keep looping until the 'q' key is pressed
 while True:
     frame_counter +=1
     ret, frame = cap.read()
     img = frame.copy()
     # img = cv.resize(img, None, fx=2, fy=2,interpolation=cv.INTER_CUBIC)
-    cv.imshow('old frame ', old_gray)
-    cv.imshow('img', img)
+
 
     gray_frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
     # display the image and wait for a keypress
     clone = frame.copy()
+    
+    # QR code detection
     hull_points =detectQRcode(frame)
-    # print(old_points.size)
+    # print(old_points)
     stop_code=False
     if hull_points:
         pt1, pt2, pt3, pt4 = hull_points
@@ -92,7 +89,8 @@ while True:
         stop_code=True
         old_points = np.array((pt1, pt2, pt3, pt4), dtype=np.float32)
         frame =AiPhile.fillPolyTrans(frame, hull_points, AiPhile.MAGENTA, 0.4)
-        AiPhile.textBGoutline(frame, f'Detection: Pyzbar', (30,80), scaling=0.5,text_color=(AiPhile.MAGENTA ))
+        AiPhile.textBGoutline(frame, f'Detection using Pyzbar', (30,80), scaling=0.5,text_color=(AiPhile.MAGENTA ))
+        
         cv.circle(frame, pt1, 10, AiPhile.GREEN, 10)
         cv.circle(frame, pt2, 10, AiPhile.BLUE, 10)
         cv.circle(frame, pt3, 10,AiPhile.YELLOW, 10)
@@ -115,98 +113,84 @@ while True:
                    font, font_scale, (0,0,0), font_thickness)
         cv.putText(frame, f'({pt4[0]}, {pt4[1]})', (pt4[0], pt4[1] - text_offset),
                    font, font_scale, (0,0,0), font_thickness)
-
-       # Calculate velocity for Pyzbar
-        current_pyzbar_points = np.array([pt1, pt2, pt3, pt4], dtype=np.float32)
-        current_pyzbar_time = time.time()
-
-        if previous_pyzbar_points is not None and previous_pyzbar_time is not None:
-            displacement = np.linalg.norm(current_pyzbar_points - previous_pyzbar_points)
-            time_difference = current_pyzbar_time - previous_pyzbar_time
-
-            # Assuming length of QR code is in centimeters
-            qr_code_length_cm = 17.5
-
-            # Convert displacement to centimeters
-            displacement_cm = (displacement / frame.shape[1]) * qr_code_length_cm
-
-            # Calculate velocity in cm/s for Pyzbar
-            pyzbar_velocity = displacement_cm / time_difference
-
-            # Display velocity for Pyzbar
-            cv.putText(frame, f'Pyzbar Velocity: {round(pyzbar_velocity, 2)} cm/s', (30, 150),
-                       cv.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 2)
-
-        # Update previous position and time for Pyzbar for the next iteration
-        previous_pyzbar_points = current_pyzbar_points
-        previous_pyzbar_time = current_pyzbar_time                                    
+        # In 1 pixels how much cm we cover
+        conversion_factor_px_to_cm = qr_code_length_cm/(pt4[0]-pt1[0])
+        
+        if prev_coordinates_pyzbar is not None:
+            displacement_X_pyzbar = old_points[0][0] - prev_coordinates_pyzbar[0][0]
+            displacement_X_pyzbar=displacement_X_pyzbar*conversion_factor_px_to_cm
+            time_difference_pyzbar = (time.time() - prev_time)
+            
+            displacement_Y_pyzbar = old_points[0][1] - prev_coordinates_pyzbar[0][1]
+            displacement_Y_pyzbar=displacement_Y_pyzbar*conversion_factor_px_to_cm
+            time_difference_pyzbar = (time.time() - prev_time)
+            
+            
+            velocities_X = (displacement_X_pyzbar / time_difference_pyzbar)
+            velocities_Y = (displacement_Y_pyzbar / time_difference_pyzbar)
+            print("This is Pyzbar")
+            print(velocities_X)
+            print(velocities_Y)
+            
+            # Append data for plotting
+            timestamps.append(time.time() - starting_time)
+            velocities_x.append(velocities_X)
+            velocities_y.append(velocities_Y)
+            
+        prev_time=time.time()
+        prev_coordinates_pyzbar = old_points
+                                   
         
     if qr_detected and stop_code==False:
         # print('detecting')
                                  
-        
+
         new_points, status, error = cv.calcOpticalFlowPyrLK(old_gray, gray_frame, old_points, None, **lk_params)
         old_points = new_points
         new_points=new_points.astype(int)
         n = (len(new_points))
         frame =AiPhile.fillPolyTrans(frame, new_points, AiPhile.GREEN, 0.4)
-        AiPhile.textBGoutline(frame, f'Detection: Optical Flow', (30,80), scaling=0.5,text_color=AiPhile.GREEN)
-        cv.circle(frame, tuple(new_points[0]), 3,AiPhile.GREEN, 2)
+        AiPhile.textBGoutline(frame, f'Detection using Optical Flow', (30,80), scaling=0.5,text_color=AiPhile.GREEN)
+        
+        if prev_coordinates_optical_flow is not None:
+            displacement_X_optical_flow = old_points[0][0] - prev_coordinates_optical_flow[0][0]
+            displacement_X_optical_flow=displacement_X_optical_flow*conversion_factor_px_to_cm
+            time_difference_optical_flow = (time.time() - prev_time)
+            
+            displacement_Y_optical_flow = old_points[0][1] - prev_coordinates_optical_flow[0][1]
+            displacement_Y_optical_flow=displacement_Y_optical_flow*conversion_factor_px_to_cm
+            time_difference_optical_flow = (time.time() - prev_time)
+            
+            velocities_Y = (displacement_Y_optical_flow / time_difference_optical_flow)
+            print("This is optical flow")
+            print(velocities_X)
+            print(velocities_Y)
+            
+            # Append data for plotting
+                
+            velocities_x.append(velocities_X)
+            velocities_y.append(velocities_Y)
+            
+        prev_time=time.time()
+        prev_coordinates_optical_flow = old_points
+            
+             
+        
+        for i, new_point in enumerate(new_points):
+            cv.circle(frame, tuple(new_point), 10, (0,0,255), 10)
         
         # Display coordinates next to the circle for Optical Flow
-        font = cv.FONT_HERSHEY_SIMPLEX
-        font_scale = 0.5
-        font_thickness = 2
-        text_offset = 10
+            font = cv.FONT_HERSHEY_SIMPLEX
+            font_scale = 0.5
+            font_thickness = 2
+            text_offset = 10
 
-        cv.putText(frame, f'({new_points[0][0]}, {new_points[0][1]})', (new_points[0][0], new_points[0][1] - text_offset),
-                   font, font_scale, (0,0,0), font_thickness)
+            cv.putText(frame, f'({new_point[0]}, {new_point[1]})', (new_point[0], new_point[1] - text_offset),
+                       font, font_scale, (0, 0, 0), font_thickness)
+            
+            
 
-        # Calculate velocity for Optical Flow
-        current_position = new_points[0]
-        current_time = time.time()
-
-        if previous_position is not None and previous_time is not None:
-            displacement = np.linalg.norm(np.array(current_position) - np.array(previous_position))
-            time_difference = current_time - previous_time
-
-            # Assuming length of QR code is in centimeters
-            qr_code_length_cm = 17.5
-
-            # Convert displacement to centimeters
-            displacement_cm = (displacement / frame.shape[1]) * qr_code_length_cm
-
-            # Calculate velocity in cm/s
-            velocity = displacement_cm / time_difference
-
-            # Display velocity
-            cv.putText(frame, f'Velocity: {round(velocity, 2)} cm/s', (30, 120), cv.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 2)
-
-        # Update previous position and time for the next iteration
-        previous_position = current_position
-        previous_time = current_time        
-                # Calculate Pyzbar velocity
-        pyzbar_velocity = np.linalg.norm(np.array(pt1) - np.array(old_points[0]))
-
-        # Calculate optical flow velocity
-        optical_flow_velocity = np.linalg.norm(new_points[0] - old_points[0])
-
-        # Store velocities
-        pyzbar_velocities.append(pyzbar_velocity)
-        optical_flow_velocities.append(optical_flow_velocity)
-        
-              # Update the plot dynamically
-        line_pyzbar.set_xdata(range(len(pyzbar_velocities)))
-        line_pyzbar.set_ydata(pyzbar_velocities)
-        line_optical_flow.set_xdata(range(len(optical_flow_velocities)))
-        line_optical_flow.set_ydata(optical_flow_velocities)
-
-        ax.relim()
-        ax.autoscale_view()
-
-        # Pause for a short duration to update the plot
-        plt.pause(0.01)
-    cv.imshow('image', frame)    
+    cv.imshow('QR Code Detecting', frame)    
     old_gray = gray_frame.copy()
     # press 'r' to reset the window
     key = cv.waitKey(1)
@@ -218,21 +202,20 @@ while True:
         break
     fps = frame_counter/(time.time()-starting_time)
     AiPhile.textBGoutline(frame, f'FPS: {round(fps,1)}', (30,40), scaling=0.6)
-    cv.imshow("image", frame)
+    cv.imshow("QR Code Detecting", frame)
 
     
 # close all open windows
 cv.destroyAllWindows()
 cap.release()
 
-# Disable interactive mode before exiting
-plt.ioff()
 
-# Plotting velocities
-plt.figure()
-plt.plot(pyzbar_velocities, label='Pyzbar Velocity')
-plt.plot(optical_flow_velocities, label='Optical Flow Velocity')
-plt.xlabel('Frame Number')
-plt.ylabel('Velocity')
+# Plotting velocity data
+plt.figure(figsize=(10, 6))
+plt.plot(timestamps, velocities_x, label='Vx')
+plt.plot(timestamps, velocities_y, label='Vy')
+plt.xlabel('Time (seconds)')
+plt.ylabel('Velocity (cm/s)')
+plt.title('Velocity XY Over Time')
 plt.legend()
 plt.show()
