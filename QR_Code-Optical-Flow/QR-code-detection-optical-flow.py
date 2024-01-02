@@ -1,4 +1,3 @@
-# Dhruv Singh Jadon
 # import the necessary packages
 import cv2 as cv
 import numpy as np
@@ -21,8 +20,9 @@ velocities_y = []
 prev_time = time.time()
 prev_coordinates_pyzbar = None
 prev_coordinates_optical_flow = None
-# QR code detector function
 
+
+# QR code detector function
 def detectQRcode(image):
     # convert the color image to gray scale image
     Gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
@@ -32,6 +32,7 @@ def detectQRcode(image):
     for obDecoded in objectQRcode:
         x, y, w, h =obDecoded.rect
         # cv.rectangle(image, (x,y), (x+w, y+h), ORANGE, 4)
+        
         points = obDecoded.polygon
         if len(points) > 4:
             hull = cv.convexHull(
@@ -46,7 +47,11 @@ ref_point = []
 click = False
 points =()
 cap = cv.VideoCapture(0)
+
 _, frame = cap.read()
+
+
+
 old_gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
 
 # Optical flow intialization
@@ -73,13 +78,13 @@ while True:
     ret, frame = cap.read()
     img = frame.copy()
     # img = cv.resize(img, None, fx=2, fy=2,interpolation=cv.INTER_CUBIC)
-
-
+   
+        
     gray_frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
     # display the image and wait for a keypress
     clone = frame.copy()
     
-    # QR code detection
+    # QR code detectionq
     hull_points =detectQRcode(frame)
     # print(old_points)
     stop_code=False
@@ -114,23 +119,49 @@ while True:
         cv.putText(frame, f'({pt4[0]}, {pt4[1]})', (pt4[0], pt4[1] - text_offset),
                    font, font_scale, (0,0,0), font_thickness)
         # In 1 pixels how much cm we cover
-        conversion_factor_px_to_cm = qr_code_length_cm/(pt4[0]-pt1[0])
+        conversion_factor_px_to_cm_pyzbar = qr_code_length_cm/(pt4[0]-pt1[0])
+        #print(pt4[0]-pt1[0])
+        
+        cw_p = pt4[0]-pt1[0]
+        
+        # Finding the Focal Length
+        W = 14.5
+        #d = 100
+        #f_p=(cw_p*d)/W
+        #print("Focal lenght at pyzbar")    
+        #print(f_p)  
+            
+        # Distance at Z-axis
+        f = 840
+        d =(W*f)/cw_p
+        
+        font = cv.FONT_HERSHEY_SIMPLEX
+        font_scale = 1
+        font_color = (0,0,255)  
+        font_thickness = 2
+
+        focal_length_text = f"Distance Extimation: {d:.2f} cm"
+        cv.putText(frame, focal_length_text, (10, 30), font, font_scale, font_color, font_thickness)
         
         if prev_coordinates_pyzbar is not None:
             displacement_X_pyzbar = old_points[0][0] - prev_coordinates_pyzbar[0][0]
-            displacement_X_pyzbar=displacement_X_pyzbar*conversion_factor_px_to_cm
+            displacement_X_pyzbar=displacement_X_pyzbar*conversion_factor_px_to_cm_pyzbar
             time_difference_pyzbar = (time.time() - prev_time)
             
             displacement_Y_pyzbar = old_points[0][1] - prev_coordinates_pyzbar[0][1]
-            displacement_Y_pyzbar=displacement_Y_pyzbar*conversion_factor_px_to_cm
-            time_difference_pyzbar = (time.time() - prev_time)
+            displacement_Y_pyzbar=displacement_Y_pyzbar*conversion_factor_px_to_cm_pyzbar
+            
             
             
             velocities_X = (displacement_X_pyzbar / time_difference_pyzbar)
             velocities_Y = (displacement_Y_pyzbar / time_difference_pyzbar)
-            print("This is Pyzbar")
-            print(velocities_X)
-            print(velocities_Y)
+            #print("This is Pyzbar")
+            #print(velocities_X)
+            #print(velocities_Y)
+            
+            #cw = old_points[0][0] - prev_coordinates_pyzbar[0][0]
+        
+             
             
             # Append data for plotting
             timestamps.append(time.time() - starting_time)
@@ -152,24 +183,60 @@ while True:
         frame =AiPhile.fillPolyTrans(frame, new_points, AiPhile.GREEN, 0.4)
         AiPhile.textBGoutline(frame, f'Detection using Optical Flow', (30,80), scaling=0.5,text_color=AiPhile.GREEN)
         
+        # Calculate the apparent width based on the distance between the first and last points
+        if len(new_points) >= 2:
+            width = np.sqrt((new_points[-1][0] - new_points[0][0])**2 + (new_points[-1][1] - new_points[0][1])**2)
+            #print(f'Apparent Width: {width}')
+            f = 840
+            d =(W*f)/width
+        
+            conversion_factor_px_to_cm_optical = qr_code_length_cm/(width)
+            font = cv.FONT_HERSHEY_SIMPLEX
+            font_scale = 1
+            font_color = (0,0,255)  
+            font_thickness = 2
+
+            focal_length_text = f"Distance Extimation: {d:.2f} cm"
+            cv.putText(frame, focal_length_text, (10, 30), font, font_scale, font_color, font_thickness)
+        
+        
+        #cw_o = pt4[0]-pt1[0]
+        # Finding the Focal Length
+        #W = 14.5
+        #d = 150
+        #f_o=(cw_p*d)/W
+        
+        
+        # Distance at Z-axis
+       
+        
+        #print(d)
+        
+        #print("Focal lenght at optical flow")
+        #print(f_o)  
+        
         if prev_coordinates_optical_flow is not None:
             displacement_X_optical_flow = old_points[0][0] - prev_coordinates_optical_flow[0][0]
-            displacement_X_optical_flow=displacement_X_optical_flow*conversion_factor_px_to_cm
+            displacement_X_optical_flow=displacement_X_optical_flow*conversion_factor_px_to_cm_optical
             time_difference_optical_flow = (time.time() - prev_time)
+            velocities_X = (displacement_X_optical_flow / time_difference_optical_flow)
+            
             
             displacement_Y_optical_flow = old_points[0][1] - prev_coordinates_optical_flow[0][1]
-            displacement_Y_optical_flow=displacement_Y_optical_flow*conversion_factor_px_to_cm
-            time_difference_optical_flow = (time.time() - prev_time)
+            displacement_Y_optical_flow=displacement_Y_optical_flow*conversion_factor_px_to_cm_optical
+            
             
             velocities_Y = (displacement_Y_optical_flow / time_difference_optical_flow)
-            print("This is optical flow")
-            print(velocities_X)
-            print(velocities_Y)
+            #print("This is optical flow")
+            #print(velocities_X)
+            #print(velocities_Y)
             
             # Append data for plotting
-                
+            timestamps.append(time.time() - starting_time)   
             velocities_x.append(velocities_X)
             velocities_y.append(velocities_Y)
+            
+            
             
         prev_time=time.time()
         prev_coordinates_optical_flow = old_points
@@ -210,7 +277,7 @@ cv.destroyAllWindows()
 cap.release()
 
 
-# Plotting velocity data
+#Plotting velocity data
 plt.figure(figsize=(10, 6))
 plt.plot(timestamps, velocities_x, label='Vx')
 plt.plot(timestamps, velocities_y, label='Vy')
@@ -219,3 +286,5 @@ plt.ylabel('Velocity (cm/s)')
 plt.title('Velocity XY Over Time')
 plt.legend()
 plt.show()
+
+#ploting real time data smoothing filter
