@@ -4,16 +4,18 @@ import cv2 as cv
 import numpy as np
 from pyzbar.pyzbar import decode
 import pyzbar
-import time
+#import time
 import AiPhile
 import matplotlib.pyplot as plt
 import pandas as pd
+import tkinter as tk
 
 # Physical size of the QR code in centimeters
 qr_code_length_cm = 25
 
-
-
+# Create a separate window for displaying velocities
+cv.namedWindow('Velocities', cv.WINDOW_NORMAL)
+cv.resizeWindow('Velocities', 400, 200)  # Adjust the size as needed
 
 
 # Initialize and store variables for ploting
@@ -34,7 +36,9 @@ timestamps = []
 
 # Initialize variables for velocity (n and n-1)
 
-prev_time = time.time()
+#prev_time = time.time()
+
+
 prev_coordinates_pyzbar = None
 prev_coordinates_optical_flow = None
 prev_distance = None
@@ -99,9 +103,7 @@ while True:
     frame_counter +=1
     ret, frame = cap.read()
     img = frame.copy()
-    # img = cv.resize(img, None, fx=2, fy=2,interpolation=cv.INTER_CUBIC)
-   
-        
+    # img = cv.resize(img, None, fx=2, fy=2,interpolation=cv.INTER_CUBIC)       
     gray_frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
     # display the image and wait for a keypress
     clone = frame.copy()
@@ -172,18 +174,28 @@ while True:
         
         focal_length_text = f"Distance Extimation: {d2:.2f} m"
         cv.putText(frame, focal_length_text, (10, 60), font, font_scale, font_color, font_thickness)
-            
-        
         
         if prev_coordinates_pyzbar is not None and prev_distance is not None :
             
             # error
-            #b_a_x = 0.5*1920*(new_distance/prev_distance-1)
-            #b_a_y = 0.5*1080*(new_distance/prev_distance-1)
+            b_a_x = 0.5*640*(new_distance/prev_distance-1)
+            b_a_y = 0.5*480*(new_distance/prev_distance-1)
             
+            #apply to all x
+            old_points[0][0]=old_points[0][0]-b_a_x
+            old_points[1][0]=old_points[1][0]-b_a_x
+            old_points[2][0]=old_points[2][0]-b_a_x
+            old_points[3][0]=old_points[3][0]-b_a_x
             
+            #apply to all y
+            old_points[0][1]=old_points[0][1]-b_a_y
+            old_points[1][1]=old_points[1][1]-b_a_y
+            old_points[2][1]=old_points[2][1]-b_a_y
+            old_points[3][1]=old_points[3][1]-b_a_y
+
             
-             # Displaying coordinates value
+                    
+            # Displaying coordinates value
             cv.putText(frame, f'({pt1[0]}, {pt1[1]})', (pt1[0], pt1[1] - text_offset),
                    font, font_scale, (0,0,0), font_thickness)
             cv.putText(frame, f'({pt2[0]}, {pt2[1]})', (pt2[0], pt2[1] - text_offset),
@@ -197,12 +209,6 @@ while True:
             change_in_time = 1/30
             velocities_Z = change_in_distance / change_in_time
             
-            
-            
-            
-            
-            
-            
             displacement_X_pyzbar = old_points[0][0] - prev_coordinates_pyzbar[0][0]
             displacement_X_pyzbar=displacement_X_pyzbar*conversion_factor_px_to_cm_pyzbar
             time_difference_pyzbar = 1/30
@@ -215,26 +221,34 @@ while True:
             velocities_Z = change_in_distance / change_in_time
             
             
-            
-            
-            
-            
-            
             velocities_X = (displacement_X_pyzbar / time_difference_pyzbar)
             velocities_Y = (displacement_Y_pyzbar / time_difference_pyzbar)
             #print("This is Pyzbar")
             #print(velocities_X)
             #print(velocities_Y)
             
-            #cw = old_points[0][0] - prev_coordinates_pyzbar[0][0]
-        
-             
-            
+            #cw = old_points[0][0] - prev_coordinates_pyzbar[0][0]            
+         
             # Append data for plotting
             timestamps.append(frame_counter/30)
             velocities_x.append(velocities_X)
             velocities_y.append(velocities_Y)
             velocities_z.append(velocities_Z)
+            
+            
+            # Display velocities in a separate window
+            velocities_text1 = f'Velocities X (cm/s) = {velocities_X:.2f}'
+            velocities_text2 = f'Velocities Y (cm/s) = {velocities_Y:.2f}'
+            velocities_text3 = f'Velocities Z (cm/s) = {velocities_Z:.2f}'
+            
+            
+            # Display velocities in the separate 'Velocities' window
+            velocities_window = np.ones((200, 400, 3), dtype=np.uint8) * 0  # White background
+            cv.putText(velocities_window, velocities_text1, (10, 30), cv.FONT_HERSHEY_SIMPLEX, 0.8, (0,255,0), 2)
+            cv.putText(velocities_window, velocities_text2, (10, 60), cv.FONT_HERSHEY_SIMPLEX, 0.8, (0,255,0), 2)    
+            cv.putText(velocities_window, velocities_text3, (10, 90), cv.FONT_HERSHEY_SIMPLEX, 0.8, (0,255,0), 2)
+            cv.imshow('Velocities', velocities_window)
+            
             # Slew rate limiting
             delta_t = timestamps[-1] - timestamps[-2] if len(timestamps) > 1 else 0.0
             
@@ -242,13 +256,6 @@ while True:
             filtered_velocity_x = filtered_velocities_x[-1] + np.clip(velocities_X - filtered_velocities_x[-1], -max_slew_rate * delta_t, max_slew_rate * delta_t)
             filtered_velocity_z = filtered_velocities_z[-1] + np.clip(velocities_Z - filtered_velocities_z[-1], -max_slew_rate * delta_t, max_slew_rate * delta_t)
             #print(filtered_velocity_x)
-            
-            
-            
-            
-            
-            
-
             
              
             filtered_velocities_x.append(filtered_velocity_x)
@@ -284,11 +291,7 @@ while True:
         n = (len(new_points))
         frame =AiPhile.fillPolyTrans(frame, new_points, AiPhile.GREEN, 0.4)
         #AiPhile.textBGoutline(frame, f'Detection using Optical Flow', (30,80), scaling=0.5,text_color=AiPhile.GREEN)
-        
-        
-        
-        
-        
+
         # Calculate distance based on apparent width
         width = np.sqrt((new_points[-1][0] - new_points[0][0])**2 + (new_points[-1][1] - new_points[0][1])**2)
         f = 840
@@ -298,8 +301,6 @@ while True:
         
         new_distance = (W2 * f2) / width
 
-        
-        
         # Calculate the apparent width based on the distance between the first and last points
         if len(new_points) >= 2:
             width = np.sqrt((new_points[-1][0] - new_points[0][0])**2 + (new_points[-1][1] - new_points[0][1])**2)
@@ -312,8 +313,7 @@ while True:
             d =(W*f)/width
             d=d*0.01
             d= -0.02573*(d)**2  + (1.48168)*d - 0.30833
-            
-            
+                  
             d2=(W2*f2)/width
             
             conversion_factor_px_to_cm_optical = qr_code_length_cm/(width)
@@ -333,9 +333,24 @@ while True:
             
             # error
             #b_a=int(new_distance/prev_distance) - 1
-            new_points = new_points #+ b_a
+            #new_points = new_points #+ b_a
             #b_a_x = 0.5*1920*(new_distance/prev_distance-1)
             #b_a_y = 0.5*1080*(new_distance/prev_distance-1)
+            
+            
+            #apply to all x
+            old_points[0][0]=old_points[0][0]-b_a_x
+            old_points[1][0]=old_points[1][0]-b_a_x
+            old_points[2][0]=old_points[2][0]-b_a_x
+            old_points[3][0]=old_points[3][0]-b_a_x
+            
+            #apply to all y
+            old_points[0][1]=old_points[0][1]-b_a_y
+            old_points[1][1]=old_points[1][1]-b_a_y
+            old_points[2][1]=old_points[2][1]-b_a_y
+            old_points[3][1]=old_points[3][1]-b_a_y
+
+
             
             
             displacement_X_optical_flow = old_points[0][0] - prev_coordinates_optical_flow[0][0]
@@ -360,6 +375,20 @@ while True:
             velocities_x.append(velocities_X)
             velocities_y.append(velocities_Y)
             velocities_z.append(velocities_Z)
+            
+            # Display velocities in a separate window
+            velocities_text1 = f'Velocities X (cm/s) = {velocities_X:.2f}'
+            velocities_text2 = f'Velocities Y (cm/s) = {velocities_Y:.2f}'
+            velocities_text3 = f'Velocities Z (cm/s) = {velocities_Z:.2f}'
+            
+            
+            # Display velocities in the separate 'Velocities' window
+            velocities_window = np.ones((200, 400, 3), dtype=np.uint8) * 0  # White background
+            cv.putText(velocities_window, velocities_text1, (10, 30), cv.FONT_HERSHEY_SIMPLEX, 0.8, (0,255,0), 2)
+            cv.putText(velocities_window, velocities_text2, (10, 60), cv.FONT_HERSHEY_SIMPLEX, 0.8, (0,255,0), 2)    
+            cv.putText(velocities_window, velocities_text3, (10, 90), cv.FONT_HERSHEY_SIMPLEX, 0.8, (0,255,0), 2)
+            cv.imshow('Velocities', velocities_window)
+            
             
             # Slew rate limiting
             delta_t = timestamps[-1] - timestamps[-2] if len(timestamps) > 1 else 0.0
@@ -394,14 +423,13 @@ while True:
             font = cv.FONT_HERSHEY_SIMPLEX
             font_scale = 0.5
             font_thickness = 2
-            text_offset = 10
 
             cv.putText(frame, f'({new_point[0]}, {new_point[1]})', (new_point[0], new_point[1] - text_offset),
-                       font, font_scale, (0, 0, 0), font_thickness)
-            
-            
+                       font, font_scale, (0, 0, 0), font_thickness)       
 
-    cv.imshow('QR Code Detecting', frame)    
+    cv.imshow('QR Code Detecting', frame)  
+    
+
     old_gray = gray_frame.copy()
     # press 'r' to reset the window
     key = cv.waitKey(1)
@@ -414,12 +442,11 @@ while True:
     fps = frame_counter/(30)
     AiPhile.textBGoutline(frame, f'FPS: {round(fps,1)}', (30,40), scaling=0.6)
     cv.imshow("QR Code Detecting", frame)
-
     
 # close all open windows
 cv.destroyAllWindows()
-cap.release()
 
+cap.release()
 
 #Plotting velocity data
 plt.figure(figsize=(10, 6))
